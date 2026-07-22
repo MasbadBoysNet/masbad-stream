@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:background="#000">
 
-    <com.pedro.rtplibrary.view.OpenGlView
+    <com.pedro.library.view.OpenGlView
         android:id="@+id/glView"
         android:layout_width="0dp"
         android:layout_height="0dp"

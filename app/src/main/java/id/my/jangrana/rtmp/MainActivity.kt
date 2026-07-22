@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -11,8 +12,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.pedro.rtplibrary.rtmp.RtmpCamera2
-import com.pedro.rtplibrary.view.OpenGlView
+import com.pedro.common.ConnectChecker
+import com.pedro.library.rtmp.RtmpCamera2
+import com.pedro.library.view.OpenGlView
 import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
@@ -64,8 +66,36 @@ class MainActivity : AppCompatActivity() {
 
         glView.setZOrderOnTop(true)
 
-        rtmpCamera = RtmpCamera2(glView)
-        rtmpCamera?.setReTries(10)
+        rtmpCamera = RtmpCamera2(glView, object : ConnectChecker {
+            override fun onConnectionStarted(url: String) = runOnUiThread {
+                tvStatus.text = "Menghubungkan..."
+            }
+
+            override fun onConnectionSuccess() = runOnUiThread {
+                tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+            }
+
+            override fun onConnectionFailed(reason: String) = runOnUiThread {
+                tvStatus.text = "Koneksi gagal: $reason"
+                stopStream()
+            }
+
+            override fun onDisconnect() = runOnUiThread {
+                tvStatus.text = "Terputus"
+                stopStream()
+            }
+
+            override fun onAuthError() = runOnUiThread {
+                tvStatus.text = "Auth RTMP gagal"
+                stopStream()
+            }
+
+            override fun onAuthSuccess() = runOnUiThread {
+                tvStatus.text = "Auth RTMP OK"
+            }
+
+            override fun onNewBitrate(bitrate: Long) = Unit
+        })
 
         btnStream.setOnClickListener { toggleStream() }
         btnCamera.setOnClickListener { switchCamera() }
@@ -105,7 +135,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun startPreview() {
         rtmpCamera?.let { cam ->
-            if (!cam.isPreviewing) {
+            if (!cam.isOnPreview) {
                 cam.startPreview()
             }
         }
@@ -129,7 +159,7 @@ class MainActivity : AppCompatActivity() {
         val endpoint = if (url.endsWith("/")) url + key else "$url/$key"
 
         rtmpCamera?.let { cam ->
-            if (!cam.isPreviewing) {
+            if (!cam.isOnPreview) {
                 cam.startPreview()
             }
             try {
@@ -139,7 +169,7 @@ class MainActivity : AppCompatActivity() {
                 btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
                 tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
                 if (isAudioOnly) glView.visibility = android.view.View.GONE
-                window.keepScreenOn = true
+                window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             } catch (e: IOException) {
                 tvStatus.text = "Gagal: ${e.localizedMessage}"
             }
@@ -153,7 +183,7 @@ class MainActivity : AppCompatActivity() {
         }
         isStreaming = false
         glView.visibility = android.view.View.VISIBLE
-        window.keepScreenOn = false
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
         btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_blue_dark))
         tvStatus.text = "Siap"
@@ -161,9 +191,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchCamera() {
         rtmpCamera?.let { cam ->
-            if (cam.isStreaming || cam.isPreviewing) {
-                cam.switchCamera()
-                isFrontCamera = !isFrontCamera
+            if (cam.isStreaming || cam.isOnPreview) {
+                try {
+                    cam.switchCamera()
+                    isFrontCamera = !isFrontCamera
+                } catch (e: Exception) {
+                    tvStatus.text = "Gagal balik kamera: ${e.localizedMessage}"
+                }
             }
         }
     }
@@ -195,14 +229,14 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         rtmpCamera?.let { cam ->
-            if (cam.isPreviewing) cam.stopPreview()
+            if (cam.isOnPreview) cam.stopPreview()
         }
     }
 
     override fun onResume() {
         super.onResume()
         rtmpCamera?.let { cam ->
-            if (!cam.isPreviewing && !isStreaming) {
+            if (!cam.isOnPreview && !isStreaming) {
                 cam.startPreview()
             }
         }

@@ -38,6 +38,6 @@ dependencies {
     implementation 'androidx.core:core-ktx:1.13.1'
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'com.github.pedroSG94:rtmp-rtsp-stream-client-java:2.8.0'
+    implementation 'com.github.pedroSG94:rtmp-rtsp-stream-client-java:2.5.0'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 }

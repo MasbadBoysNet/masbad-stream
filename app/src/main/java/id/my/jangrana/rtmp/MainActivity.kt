@@ -1,0 +1,210 @@
+package id.my.jangrana.rtmp
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Bundle
+import android.widget.Button
+import android.widget.EditText
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.pedro.rtplibrary.rtmp.RtmpCamera2
+import com.pedro.rtplibrary.view.OpenGlView
+import java.io.IOException
+
+class MainActivity : AppCompatActivity() {
+
+    private lateinit var glView: OpenGlView
+    private lateinit var etUrl: EditText
+    private lateinit var etKey: EditText
+    private lateinit var btnCamera: Button
+    private lateinit var btnAudioOnly: Button
+    private lateinit var btnStream: Button
+    private lateinit var tvStatus: TextView
+    private lateinit var btnLogout: Button
+
+    private var rtmpCamera: RtmpCamera2? = null
+    private var isStreaming = false
+    private var isAudioOnly = false
+    private var isFrontCamera = true
+
+    private val permissions = arrayOf(
+        Manifest.permission.CAMERA,
+        Manifest.permission.RECORD_AUDIO
+    )
+    private val permReqCode = 100
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        glView = findViewById(R.id.glView)
+        etUrl = findViewById(R.id.etUrl)
+        etKey = findViewById(R.id.etKey)
+        btnCamera = findViewById(R.id.btnCamera)
+        btnAudioOnly = findViewById(R.id.btnAudioOnly)
+        btnStream = findViewById(R.id.btnStream)
+        tvStatus = findViewById(R.id.tvStatus)
+        btnLogout = findViewById(R.id.btnLogout)
+
+        val rtmpUrl = intent.getStringExtra("rtmp_url") ?: ""
+        val streamKey = intent.getStringExtra("stream_key") ?: ""
+
+        if (rtmpUrl.isNotEmpty() && streamKey.isNotEmpty()) {
+            val baseUrl = rtmpUrl.substringBeforeLast("/")
+            val key = rtmpUrl.substringAfterLast("/")
+            etUrl.setText(baseUrl + "/")
+            etKey.setText(key)
+            etUrl.isEnabled = false
+            etKey.isEnabled = false
+        }
+
+        glView.setZOrderOnTop(true)
+
+        rtmpCamera = RtmpCamera2(glView)
+        rtmpCamera?.setReTries(10)
+
+        btnStream.setOnClickListener { toggleStream() }
+        btnCamera.setOnClickListener { switchCamera() }
+        btnAudioOnly.setOnClickListener { toggleAudioOnly() }
+        btnLogout.setOnClickListener {
+            if (isStreaming) stopStream()
+            val intent = Intent(this, LoginActivity::class.java)
+            intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            startActivity(intent)
+            finish()
+        }
+
+        checkPermissions()
+    }
+
+    private fun checkPermissions() {
+        val needed = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, needed.toTypedArray(), permReqCode)
+        } else {
+            startPreview()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, perms: Array<out String>, results: IntArray) {
+        super.onRequestPermissionsResult(requestCode, perms, results)
+        if (requestCode == permReqCode) {
+            if (results.all { it == PackageManager.PERMISSION_GRANTED }) {
+                startPreview()
+            } else {
+                Toast.makeText(this, "Izin kamera & audio diperlukan", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun startPreview() {
+        rtmpCamera?.let { cam ->
+            if (!cam.isPreviewing) {
+                cam.startPreview()
+            }
+        }
+    }
+
+    private fun toggleStream() {
+        if (isStreaming) {
+            stopStream()
+        } else {
+            startStream()
+        }
+    }
+
+    private fun startStream() {
+        val url = etUrl.text.toString().trim()
+        val key = etKey.text.toString().trim()
+        if (url.isEmpty() || key.isEmpty()) {
+            tvStatus.text = "Isi server URL dan stream key"
+            return
+        }
+        val endpoint = if (url.endsWith("/")) url + key else "$url/$key"
+
+        rtmpCamera?.let { cam ->
+            if (!cam.isPreviewing) {
+                cam.startPreview()
+            }
+            try {
+                cam.startStream(endpoint)
+                isStreaming = true
+                btnStream.text = "Hentikan"
+                btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+                tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+                if (isAudioOnly) glView.visibility = android.view.View.GONE
+                window.keepScreenOn = true
+            } catch (e: IOException) {
+                tvStatus.text = "Gagal: ${e.localizedMessage}"
+            }
+        }
+    }
+
+    private fun stopStream() {
+        rtmpCamera?.let { cam ->
+            cam.stopStream()
+            cam.stopPreview()
+        }
+        isStreaming = false
+        glView.visibility = android.view.View.VISIBLE
+        window.keepScreenOn = false
+        btnStream.text = "Mulai Stream"
+        btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_blue_dark))
+        tvStatus.text = "Siap"
+    }
+
+    private fun switchCamera() {
+        rtmpCamera?.let { cam ->
+            if (cam.isStreaming || cam.isPreviewing) {
+                cam.switchCamera()
+                isFrontCamera = !isFrontCamera
+            }
+        }
+    }
+
+    private fun toggleAudioOnly() {
+        isAudioOnly = !isAudioOnly
+        btnAudioOnly.text = if (isAudioOnly) "Audio Only: ON" else "Audio Only: OFF"
+
+        rtmpCamera?.let { cam ->
+            if (isStreaming) {
+                if (isAudioOnly) {
+                    cam.stopPreview()
+                    glView.visibility = android.view.View.GONE
+                    tvStatus.text = "Streaming Audio Only..."
+                } else {
+                    glView.visibility = android.view.View.VISIBLE
+                    cam.startPreview()
+                    tvStatus.text = "Streaming..."
+                }
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        if (isStreaming) stopStream()
+        super.onDestroy()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        rtmpCamera?.let { cam ->
+            if (cam.isPreviewing) cam.stopPreview()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        rtmpCamera?.let { cam ->
+            if (!cam.isPreviewing && !isStreaming) {
+                cam.startPreview()
+            }
+        }
+    }
+}

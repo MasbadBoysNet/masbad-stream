@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0f172a"
+    android:padding="32dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Daftar Akun Baru"
+        android:textColor="#38bdf8"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <EditText
+        android:id="@+id/etUsername"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="32dp"
+        android:hint="Username"
+        android:textColor="#fff"
+        android:textColorHint="#64748b"
+        android:background="#1e293b"
+        android:paddingHorizontal="16dp"
+        android:textSize="15sp"
+        android:singleLine="true"
+        android:inputType="text" />
+
+    <EditText
+        android:id="@+id/etPassword"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="12dp"
+        android:hint="Password (min 4 karakter)"
+        android:textColor="#fff"
+        android:textColorHint="#64748b"
+        android:background="#1e293b"
+        android:paddingHorizontal="16dp"
+        android:textSize="15sp"
+        android:singleLine="true"
+        android:inputType="textPassword" />
+
+    <EditText
+        android:id="@+id/etConfirm"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="12dp"
+        android:hint="Konfirmasi Password"
+        android:textColor="#fff"
+        android:textColorHint="#64748b"
+        android:background="#1e293b"
+        android:paddingHorizontal="16dp"
+        android:textSize="15sp"
+        android:singleLine="true"
+        android:inputType="textPassword" />
+
+    <Button
+        android:id="@+id/btnRegister"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginTop="20dp"
+        android:text="Daftar"
+        android:textSize="15sp"
+        android:backgroundTint="#38bdf8"
+        android:textColor="#0f172a" />
+
+    <TextView
+        android:id="@+id/tvError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text=""
+        android:textColor="#f87171"
+        android:textSize="13sp"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/btnLogin"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Sudah punya akun? Masuk"
+        android:textColor="#38bdf8"
+        android:textSize="14sp"
+        android:clickable="true"
+        android:focusable="true" />
+</LinearLayout>

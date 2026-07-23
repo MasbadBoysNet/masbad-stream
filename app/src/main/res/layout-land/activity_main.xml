@@ -9,6 +9,13 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <View
+        android:id="@+id/tapOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:focusable="true" />
+
     <TextView
         android:id="@+id/tvWatermark"
         android:layout_width="wrap_content"

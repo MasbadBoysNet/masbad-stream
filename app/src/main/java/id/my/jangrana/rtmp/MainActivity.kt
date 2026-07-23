@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceHolder
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.SeekBar
@@ -36,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvStatus: TextView
     private lateinit var tvZoomLabel: TextView
     private lateinit var zoomSeek: SeekBar
+    private lateinit var tapOverlay: View
     private lateinit var controls: View
 
     private var rtmpCamera: RtmpCamera2? = null
@@ -71,6 +73,7 @@ class MainActivity : AppCompatActivity() {
         tvStatus = findViewById(R.id.tvStatus)
         tvZoomLabel = findViewById(R.id.tvZoomLabel)
         zoomSeek = findViewById(R.id.zoomSeek)
+        tapOverlay = findViewById(R.id.tapOverlay)
         controls = findViewById(R.id.controls)
 
         val streamKey = intent.getStringExtra("stream_key") ?: ""
@@ -139,8 +142,7 @@ class MainActivity : AppCompatActivity() {
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
         })
 
-        glView?.isClickable = true
-        glView?.setOnClickListener { toggleControls() }
+        tapOverlay.setOnClickListener { toggleControls() }
 
         btnStream.setOnClickListener { toggleStream() }
 

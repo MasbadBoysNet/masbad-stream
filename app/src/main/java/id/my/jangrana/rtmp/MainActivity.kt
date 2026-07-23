@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
+import android.media.MediaCodecInfo
 import java.io.IOException
 
 class MainActivity : AppCompatActivity() {
@@ -58,15 +59,6 @@ class MainActivity : AppCompatActivity() {
     private val maxReconnectAttempts = 5
     private val reconnectHandler = Handler(Looper.getMainLooper())
     private var encodersPrepared = false
-    private val keyFrameHandler = Handler(Looper.getMainLooper())
-    private val keyFrameRunnable = object : Runnable {
-        override fun run() {
-            if (isStreaming && !isAudioOnly) {
-                try { rtmpCamera?.requestKeyFrame() } catch (e: Exception) { }
-                keyFrameHandler.postDelayed(this, 2000L)
-            }
-        }
-    }
 
     private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
@@ -114,7 +106,6 @@ class MainActivity : AppCompatActivity() {
 
                     override fun onConnectionSuccess() = runOnUiThread {
                         reconnectAttempts = 0
-                        startKeyFrameRequests()
                         tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     }
 
@@ -252,10 +243,23 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isAudioOnly) {
                     val res = getResolution()
+                    val videoOk = cam.prepareVideo(
+                        res.width, res.height, res.fps, res.bitrate, res.iframeInterval,
+                        0,
+                        MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline,
+                        MediaCodecInfo.CodecLevel.AVCLevel31
+                    )
+                    if (!videoOk) {
+                        tvStatus.text = "Gagal init video encoder"
+                        return@let
+                    }
                     cam.forceFpsLimit(true)
-                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, 1, 0)
                 }
-                cam.prepareAudio(32 * 1000, 44100, false, false, false)
+                val audioOk = cam.prepareAudio(32 * 1000, 44100, false, false, false)
+                if (!audioOk) {
+                    tvStatus.text = "Gagal init audio encoder"
+                    return@let
+                }
                 encodersPrepared = true
 
                 if (!isAudioOnly) {
@@ -269,10 +273,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getResolution(): ResConfig {
-        return ResConfig(640, 360, 10, 350 * 1000)
+        return ResConfig(640, 360, 20, 800 * 1000, 2)
     }
 
-    data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int)
+    data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int, val iframeInterval: Int)
 
     private fun toggleControls() {
         controlsHidden = !controlsHidden
@@ -370,7 +374,6 @@ class MainActivity : AppCompatActivity() {
         encodersPrepared = false
         isStreaming = false
         glView?.visibility = View.VISIBLE
-        stopKeyFrameRequests()
         releaseStreamWakeLock()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
@@ -390,7 +393,6 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
         encodersPrepared = false
         isStreaming = false
-        stopKeyFrameRequests()
 
         if (!isAudioOnly) {
             stopStream(status)
@@ -457,13 +459,4 @@ class MainActivity : AppCompatActivity() {
         streamWakeLock = null
     }
 
-    private fun startKeyFrameRequests() {
-        if (isAudioOnly) return
-        keyFrameHandler.removeCallbacks(keyFrameRunnable)
-        keyFrameHandler.post(keyFrameRunnable)
-    }
-
-    private fun stopKeyFrameRequests() {
-        keyFrameHandler.removeCallbacks(keyFrameRunnable)
-    }
 }

@@ -5,8 +5,6 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.graphics.Color
-import android.graphics.PorterDuff
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -53,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var permissionsGranted = false
     private var currentPath = 1
     private var controlsHidden = false
+    private var encoderPrepared = false
 
     private var currentResolutionIdx = 0
     private val resolutions = listOf(
@@ -105,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         updatePathLabel()
         updateRotateLabel()
         updateResLabel()
+        updateAudioLabel()
 
         try {
             rtmpCamera = glView?.let { gv ->
@@ -146,7 +146,10 @@ class MainActivity : AppCompatActivity() {
         glView?.holder?.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 surfaceReady = true
-                if (permissionsGranted) startPreview()
+                if (permissionsGranted) {
+                    prepareEncoders()
+                    startPreview()
+                }
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
@@ -198,24 +201,12 @@ class MainActivity : AppCompatActivity() {
 
         btnAudioOnly.setOnClickListener {
             isAudioOnly = !isAudioOnly
-            btnAudioOnly.text = if (isAudioOnly) "Audio: ON" else "Audio: OFF"
+            updateAudioLabel()
 
-            try {
-                rtmpCamera?.let { cam ->
-                    if (isStreaming) {
-                        if (isAudioOnly) {
-                            cam.stopPreview()
-                            glView?.visibility = View.GONE
-                            tvStatus.text = "Streaming Audio Only..."
-                        } else {
-                            glView?.visibility = View.VISIBLE
-                            if (surfaceReady) cam.startPreview()
-                            tvStatus.text = "Streaming LIVE..."
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                tvStatus.text = "Audio error: ${e.localizedMessage}"
+            if (isStreaming) {
+                stopStream()
+                prepareEncoders()
+                startStream()
             }
         }
 
@@ -231,8 +222,12 @@ class MainActivity : AppCompatActivity() {
         btnResCycle.setOnClickListener {
             currentResolutionIdx = (currentResolutionIdx + 1) % resolutions.size
             updateResLabel()
-            if (rtmpCamera?.isOnPreview == true) {
-                try { rtmpCamera?.startPreview() } catch (e: Exception) { }
+            if (!isStreaming) {
+                if (rtmpCamera?.isOnPreview == true) {
+                    try { rtmpCamera?.stopPreview() } catch (e: Exception) { }
+                }
+                prepareEncoders()
+                startPreview()
             }
         }
 
@@ -257,6 +252,39 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
     }
 
+    private fun prepareEncoders() {
+        encoderPrepared = false
+        try {
+            rtmpCamera?.let { cam ->
+                var ok = true
+                if (!isAudioOnly) {
+                    val res = resolutions[currentResolutionIdx]
+                    try {
+                        if (!cam.prepareVideo(res.width, res.height, res.bitrateKbps * 1000)) {
+                            tvStatus.text = "Gagal siapkan video"
+                            ok = false
+                        }
+                    } catch (e: Exception) {
+                        tvStatus.text = "Video: ${e.localizedMessage}"
+                        ok = false
+                    }
+                }
+                try {
+                    if (!cam.prepareAudio()) {
+                        tvStatus.text = "Gagal siapkan audio"
+                        ok = false
+                    }
+                } catch (e: Exception) {
+                    tvStatus.text = "Audio: ${e.localizedMessage}"
+                    ok = false
+                }
+                encoderPrepared = ok
+            }
+        } catch (e: Exception) {
+            tvStatus.text = "Encoder: ${e.localizedMessage}"
+        }
+    }
+
     private fun toggleControls() {
         controlsHidden = !controlsHidden
         controls.visibility = if (controlsHidden) View.GONE else View.VISIBLE
@@ -279,6 +307,10 @@ class MainActivity : AppCompatActivity() {
         btnResCycle.text = resolutions[currentResolutionIdx].label
     }
 
+    private fun updateAudioLabel() {
+        btnAudioOnly.text = if (isAudioOnly) "Audio Only" else "Stream Audio"
+    }
+
     private fun getStreamEndpoint(): String {
         return "${baseRtmpUrl}stream$currentPath"
     }
@@ -289,7 +321,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (needed.isEmpty()) {
             permissionsGranted = true
-            if (surfaceReady) startPreview()
+            if (surfaceReady) {
+                prepareEncoders()
+                startPreview()
+            }
         } else {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), permReqCode)
         }
@@ -300,7 +335,10 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == permReqCode) {
             if (results.all { it == PackageManager.PERMISSION_GRANTED }) {
                 permissionsGranted = true
-                if (surfaceReady) startPreview()
+                if (surfaceReady) {
+                    prepareEncoders()
+                    startPreview()
+                }
             } else {
                 Toast.makeText(this, "Izin kamera & audio diperlukan", Toast.LENGTH_LONG).show()
             }
@@ -330,6 +368,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun startStream() {
+        if (!encoderPrepared) {
+            prepareEncoders()
+        }
         val endpoint = getStreamEndpoint()
 
         try {
@@ -337,47 +378,17 @@ class MainActivity : AppCompatActivity() {
                 if (!cam.isOnPreview) {
                     if (!startPreview()) return@let
                 }
-
-                Handler(Looper.getMainLooper()).postDelayed({
-                    val res = resolutions[currentResolutionIdx]
-                    var ok = true
-
-                    if (!isAudioOnly) {
-                        try {
-                            if (!cam.prepareVideo(res.width, res.height, 30, res.bitrateKbps * 1000, 0)) {
-                                tvStatus.text = "Gagal siapkan video encoder"
-                                ok = false
-                            }
-                        } catch (e: Exception) {
-                            tvStatus.text = "Video: ${e.localizedMessage}"
-                            ok = false
-                        }
-                    }
-
-                    try {
-                        if (!cam.prepareAudio()) {
-                            tvStatus.text = "Gagal siapkan audio encoder"
-                            ok = false
-                        }
-                    } catch (e: Exception) {
-                        tvStatus.text = "Audio: ${e.localizedMessage}"
-                        ok = false
-                    }
-
-                    if (ok) {
-                        try {
-                            cam.startStream(endpoint)
-                            isStreaming = true
-                            btnStream.text = "Hentikan"
-                            btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
-                            tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
-                            if (isAudioOnly) glView?.visibility = View.GONE
-                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                        } catch (e: IOException) {
-                            tvStatus.text = "Gagal: ${e.localizedMessage}"
-                        }
-                    }
-                }, 500)
+                try {
+                    cam.startStream(endpoint)
+                    isStreaming = true
+                    btnStream.text = "Hentikan"
+                    btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
+                    tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+                    if (isAudioOnly) glView?.visibility = View.GONE
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } catch (e: IOException) {
+                    tvStatus.text = "Gagal: ${e.localizedMessage}"
+                }
             }
         } catch (e: Exception) {
             tvStatus.text = "Stream error: ${e.localizedMessage}"
@@ -416,7 +427,12 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         updateRotateLabel()
-        if (permissionsGranted && surfaceReady) startPreview()
+        if (permissionsGranted && surfaceReady) {
+            if (!isStreaming) {
+                prepareEncoders()
+                startPreview()
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

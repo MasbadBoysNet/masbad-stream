@@ -91,12 +91,6 @@ class MainActivity : AppCompatActivity() {
         updateRotateLabel()
 
         try {
-            glView?.setZOrderOnTop(true)
-        } catch (e: Exception) {
-            tvStatus.text = "GL init: ${e.localizedMessage}"
-        }
-
-        try {
             rtmpCamera = glView?.let { gv ->
                 RtmpCamera2(gv, object : ConnectChecker {
                     override fun onConnectionStarted(url: String) = runOnUiThread {

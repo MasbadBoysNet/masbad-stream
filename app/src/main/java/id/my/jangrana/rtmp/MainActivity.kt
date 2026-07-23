@@ -58,6 +58,15 @@ class MainActivity : AppCompatActivity() {
     private val maxReconnectAttempts = 5
     private val reconnectHandler = Handler(Looper.getMainLooper())
     private var encodersPrepared = false
+    private val keyFrameHandler = Handler(Looper.getMainLooper())
+    private val keyFrameRunnable = object : Runnable {
+        override fun run() {
+            if (isStreaming && !isAudioOnly) {
+                try { rtmpCamera?.requestKeyFrame() } catch (e: Exception) { }
+                keyFrameHandler.postDelayed(this, 2000L)
+            }
+        }
+    }
 
     private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
@@ -105,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
                     override fun onConnectionSuccess() = runOnUiThread {
                         reconnectAttempts = 0
+                        startKeyFrameRequests()
                         tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     }
 
@@ -242,7 +252,8 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isAudioOnly) {
                     val res = getResolution()
-                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, 0)
+                    cam.forceFpsLimit(true)
+                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, 1, 0)
                 }
                 cam.prepareAudio(32 * 1000, 44100, false, false, false)
                 encodersPrepared = true
@@ -359,6 +370,7 @@ class MainActivity : AppCompatActivity() {
         encodersPrepared = false
         isStreaming = false
         glView?.visibility = View.VISIBLE
+        stopKeyFrameRequests()
         releaseStreamWakeLock()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
@@ -378,6 +390,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
         encodersPrepared = false
         isStreaming = false
+        stopKeyFrameRequests()
 
         if (!isAudioOnly) {
             stopStream(status)
@@ -442,5 +455,15 @@ class MainActivity : AppCompatActivity() {
             if (streamWakeLock?.isHeld == true) streamWakeLock?.release()
         } catch (e: Exception) { }
         streamWakeLock = null
+    }
+
+    private fun startKeyFrameRequests() {
+        if (isAudioOnly) return
+        keyFrameHandler.removeCallbacks(keyFrameRunnable)
+        keyFrameHandler.post(keyFrameRunnable)
+    }
+
+    private fun stopKeyFrameRequests() {
+        keyFrameHandler.removeCallbacks(keyFrameRunnable)
     }
 }

@@ -242,8 +242,7 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isAudioOnly) {
                     val res = getResolution()
-                    val rotation = if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) 90 else 0
-                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, rotation)
+                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, 0)
                 }
                 cam.prepareAudio(32 * 1000, 44100, false, false, false)
                 encodersPrepared = true
@@ -259,7 +258,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getResolution(): ResConfig {
-        return ResConfig(640, 360, 15, 500 * 1000)
+        return ResConfig(640, 360, 10, 350 * 1000)
     }
 
     data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int)
@@ -379,6 +378,11 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
         encodersPrepared = false
         isStreaming = false
+
+        if (!isAudioOnly) {
+            stopStream(status)
+            return
+        }
 
         if (reconnectAttempts >= maxReconnectAttempts) {
             stopStream("$status. Reconnect gagal")

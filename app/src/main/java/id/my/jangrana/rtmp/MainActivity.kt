@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.SurfaceHolder
 import android.view.WindowManager
 import android.widget.Button
@@ -34,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private var isAudioOnly = false
     private var isFrontCamera = true
     private var surfaceReady = false
+    private var permissionsGranted = false
 
     private val permissions = arrayOf(
         Manifest.permission.CAMERA,
@@ -112,6 +115,7 @@ class MainActivity : AppCompatActivity() {
         glView?.holder?.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 surfaceReady = true
+                if (permissionsGranted) startPreview()
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
@@ -135,7 +139,10 @@ class MainActivity : AppCompatActivity() {
         val needed = permissions.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (needed.isNotEmpty()) {
+        if (needed.isEmpty()) {
+            permissionsGranted = true
+            if (surfaceReady) startPreview()
+        } else {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), permReqCode)
         }
     }
@@ -143,7 +150,10 @@ class MainActivity : AppCompatActivity() {
     override fun onRequestPermissionsResult(requestCode: Int, perms: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, perms, results)
         if (requestCode == permReqCode) {
-            if (!results.all { it == PackageManager.PERMISSION_GRANTED }) {
+            if (results.all { it == PackageManager.PERMISSION_GRANTED }) {
+                permissionsGranted = true
+                if (surfaceReady) startPreview()
+            } else {
                 Toast.makeText(this, "Izin kamera & audio diperlukan", Toast.LENGTH_LONG).show()
             }
         }
@@ -188,21 +198,29 @@ class MainActivity : AppCompatActivity() {
             rtmpCamera?.let { cam ->
                 if (!cam.isOnPreview) {
                     if (!startPreview()) return@let
-                }
-                try {
-                    cam.startStream(endpoint)
-                    isStreaming = true
-                    btnStream.text = "Hentikan"
-                    btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
-                    tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
-                    if (isAudioOnly) glView?.visibility = android.view.View.GONE
-                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                } catch (e: IOException) {
-                    tvStatus.text = "Gagal: ${e.localizedMessage}"
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        doStream(cam, endpoint)
+                    }, 500)
+                } else {
+                    doStream(cam, endpoint)
                 }
             }
         } catch (e: Exception) {
             tvStatus.text = "Stream error: ${e.localizedMessage}"
+        }
+    }
+
+    private fun doStream(cam: RtmpCamera2, endpoint: String) {
+        try {
+            cam.startStream(endpoint)
+            isStreaming = true
+            btnStream.text = "Hentikan"
+            btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+            tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+            if (isAudioOnly) glView?.visibility = android.view.View.GONE
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } catch (e: IOException) {
+            tvStatus.text = "Gagal: ${e.localizedMessage}"
         }
     }
 
@@ -273,5 +291,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (permissionsGranted && surfaceReady) startPreview()
     }
 }

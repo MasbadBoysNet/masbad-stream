@@ -294,6 +294,7 @@ class MainActivity : AppCompatActivity() {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }
+                    cam.getGlInterface()?.setRotation(if (isPortrait) 270 else 0)
                 }
                 val audioOk = cam.prepareAudio(32 * 1000, 44100, false, false, false)
                 if (!audioOk) {

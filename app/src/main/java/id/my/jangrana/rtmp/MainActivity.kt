@@ -91,7 +91,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         glView = findViewById(R.id.glView)
-        glView?.setKeepAspectRatio(true)
         btnCamera = findViewById(R.id.btnCamera)
         btnPathCycle = findViewById(R.id.btnPathCycle)
         btnMirror = findViewById(R.id.btnMirror)
@@ -264,9 +263,11 @@ class MainActivity : AppCompatActivity() {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }
+                    val gl = cam.getGlInterface()
                     if (isPortrait) {
-                        cam.getGlInterface()?.setRotation(90)
+                        gl?.setRotation(90)
                     }
+                    gl?.setKeepAspectRatio(true)
                 }
                 val audioOk = cam.prepareAudio(32 * 1000, 44100, false, false, false)
                 if (!audioOk) {

@@ -2,14 +2,13 @@ package id.my.jangrana.rtmp
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.view.GestureDetector
+import android.view.Surface
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.View
@@ -22,7 +21,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.pedro.common.ConnectChecker
-import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
 import java.io.IOException
@@ -34,7 +32,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPathCycle: Button
     private lateinit var btnMirror: Button
     private lateinit var btnAudioOnly: Button
-    private lateinit var btnRotate: Button
+    private lateinit var btnRes: Button
     private lateinit var btnStream: Button
     private lateinit var btnLogout: Button
     private lateinit var tvStatus: TextView
@@ -59,6 +57,15 @@ class MainActivity : AppCompatActivity() {
     private val maxReconnectAttempts = 5
     private val reconnectHandler = Handler(Looper.getMainLooper())
     private var encodersPrepared = false
+    private var currentResIdx = 1
+    private val resolutions = listOf(
+        ResConfig(426, 240, 15, 350 * 1000, 2, "240p"),
+        ResConfig(640, 360, 15, 600 * 1000, 2, "360p"),
+        ResConfig(854, 480, 20, 1_000_000, 2, "480p"),
+        ResConfig(1280, 720, 24, 2_000_000, 2, "720p"),
+        ResConfig(1920, 1080, 30, 4_000_000, 2, "1080p"),
+        ResConfig(2560, 1440, 30, 8_000_000, 2, "1440p"),
+    )
     private val keyFrameHandler = Handler(Looper.getMainLooper())
     private val keyFrameRunnable = object : Runnable {
         override fun run() {
@@ -88,7 +95,7 @@ class MainActivity : AppCompatActivity() {
         btnPathCycle = findViewById(R.id.btnPathCycle)
         btnMirror = findViewById(R.id.btnMirror)
         btnAudioOnly = findViewById(R.id.btnAudioOnly)
-        btnRotate = findViewById(R.id.btnRotate)
+        btnRes = findViewById(R.id.btnRes)
         btnStream = findViewById(R.id.btnStream)
         btnLogout = findViewById(R.id.btnLogout)
         tvStatus = findViewById(R.id.tvStatus)
@@ -103,7 +110,7 @@ class MainActivity : AppCompatActivity() {
             currentPath = num.coerceIn(1, 12)
         }
         btnPathCycle.text = "Stream $currentPath"
-        updateRotateLabel()
+        btnRes.text = resolutions[currentResIdx].label
         updateAudioLabel()
 
         try {
@@ -213,13 +220,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        btnRotate.setOnClickListener {
-            val cur = resources.configuration.orientation
-            if (cur == Configuration.ORIENTATION_LANDSCAPE) {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else {
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
+        btnRes.setOnClickListener {
+            currentResIdx = (currentResIdx + 1) % resolutions.size
+            btnRes.text = resolutions[currentResIdx].label
         }
 
         btnLogout.setOnClickListener {
@@ -252,10 +255,11 @@ class MainActivity : AppCompatActivity() {
                 if (!forcePrepare && cam.isOnPreview && encodersPrepared) return@let
 
                 if (!isAudioOnly) {
-                    val res = getResolution()
-                    val rotation = CameraHelper.getCameraOrientation(this)
-                    val (vw, vh) = if (rotation == 90 || rotation == 270) res.height to res.width else res.width to res.height
-                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, rotation)) {
+                    val res = resolutions[currentResIdx]
+                    val isPortrait = windowManager.defaultDisplay.rotation == Surface.ROTATION_0 ||
+                            windowManager.defaultDisplay.rotation == Surface.ROTATION_180
+                    val (vw, vh) = if (isPortrait) res.height to res.width else res.width to res.height
+                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, 0)) {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }
@@ -277,11 +281,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun getResolution(): ResConfig {
-        return ResConfig(640, 360, 15, 600 * 1000, 2)
-    }
-
-    data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int, val iframeInterval: Int)
+    data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int, val iframeInterval: Int, val label: String)
 
     private fun toggleControls() {
         controlsHidden = !controlsHidden
@@ -290,11 +290,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateMirrorLabel() {
         btnMirror.text = if (isMirror) "Flip: ON" else "Flip: OFF"
-    }
-
-    private fun updateRotateLabel() {
-        val cur = resources.configuration.orientation
-        btnRotate.text = if (cur == Configuration.ORIENTATION_LANDSCAPE) "Potrait" else "Landscape"
     }
 
     private fun updateAudioLabel() {
@@ -436,15 +431,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        updateRotateLabel()
         if (permissionsGranted && surfaceReady && !isStreaming) {
             initCamera()
         }
-    }
-
-    override fun onConfigurationChanged(newConfig: Configuration) {
-        super.onConfigurationChanged(newConfig)
-        updateRotateLabel()
     }
 
     private fun acquireStreamWakeLock() {

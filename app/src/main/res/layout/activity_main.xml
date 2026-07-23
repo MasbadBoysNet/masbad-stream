@@ -125,13 +125,13 @@
                 android:text="Video+Audio" />
 
             <Button
-                android:id="@+id/btnRotate"
+                android:id="@+id/btnRes"
                 style="@style/StreamCycleBtn"
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
                 android:layout_marginHorizontal="3dp"
-                android:text="Landscape" />
+                android:text="360p" />
 
             <Button
                 android:id="@+id/btnLogout"

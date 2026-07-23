@@ -29,7 +29,6 @@ class MainActivity : AppCompatActivity() {
 
     private var glView: OpenGlView? = null
     private lateinit var btnCamera: Button
-    private lateinit var btnPathCycle: Button
     private lateinit var btnMirror: Button
     private lateinit var btnAudioOnly: Button
     private lateinit var btnRotate: Button
@@ -49,15 +48,10 @@ class MainActivity : AppCompatActivity() {
     private var isMirror = true
     private var surfaceReady = false
     private var permissionsGranted = false
-    private var currentPath = 1
     private var controlsHidden = false
-    private var currentResolutionIdx = 0
-    private val resolutions = listOf(
-        ResConfig("720p", 1280, 720, 500),
-        ResConfig("1080p", 1920, 1080, 1000),
-    )
 
-    private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
+    private var streamKey = ""
+    private var rtmpBase = "rtmp://stream.jangrana.my.id:1935/"
 
     private val permissions = arrayOf(
         Manifest.permission.CAMERA,
@@ -67,19 +61,15 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var gestureDetector: GestureDetector
 
-    data class ResConfig(val label: String, val width: Int, val height: Int, val bitrateKbps: Int)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         glView = findViewById(R.id.glView)
         btnCamera = findViewById(R.id.btnCamera)
-        btnPathCycle = findViewById(R.id.btnPathCycle)
         btnMirror = findViewById(R.id.btnMirror)
         btnAudioOnly = findViewById(R.id.btnAudioOnly)
         btnRotate = findViewById(R.id.btnRotate)
-        btnResCycle = findViewById(R.id.btnResCycle)
         btnStream = findViewById(R.id.btnStream)
         btnLogout = findViewById(R.id.btnLogout)
         tvStatus = findViewById(R.id.tvStatus)
@@ -88,20 +78,14 @@ class MainActivity : AppCompatActivity() {
         tapOverlay = findViewById(R.id.tapOverlay)
         controls = findViewById(R.id.controls)
 
-        val streamKey = intent.getStringExtra("stream_key") ?: ""
+        streamKey = intent.getStringExtra("stream_key") ?: ""
         val rtmpUrl = intent.getStringExtra("rtmp_url") ?: ""
 
-        if (streamKey.isNotEmpty()) {
-            val num = streamKey.replace("stream", "").toIntOrNull() ?: 1
-            currentPath = num.coerceIn(1, 12)
-        } else if (rtmpUrl.isNotEmpty()) {
-            val key = rtmpUrl.substringAfterLast("/")
-            val num = key.replace("stream", "").toIntOrNull() ?: 1
-            currentPath = num.coerceIn(1, 12)
+        if (streamKey.isEmpty() && rtmpUrl.isNotEmpty()) {
+            streamKey = rtmpUrl.substringAfterLast("/")
         }
-        updatePathLabel()
+
         updateRotateLabel()
-        updateResLabel()
         updateAudioLabel()
 
         try {
@@ -112,7 +96,7 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onConnectionSuccess() = runOnUiThread {
-                        tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+                        tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     }
 
                     override fun onConnectionFailed(reason: String) = runOnUiThread {
@@ -144,7 +128,7 @@ class MainActivity : AppCompatActivity() {
         glView?.holder?.addCallback(object : SurfaceHolder.Callback {
             override fun surfaceCreated(holder: SurfaceHolder) {
                 surfaceReady = true
-                if (permissionsGranted) initCamera()
+                if (permissionsGranted) startPreview()
             }
             override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
@@ -183,11 +167,6 @@ class MainActivity : AppCompatActivity() {
             btnCamera.text = if (isFrontCamera) "Kamera: Depan" else "Kamera: Belakang"
         }
 
-        btnPathCycle.setOnClickListener {
-            currentPath = if (currentPath >= 12) 1 else currentPath + 1
-            updatePathLabel()
-        }
-
         btnMirror.setOnClickListener {
             isMirror = !isMirror
             updateMirrorLabel()
@@ -198,7 +177,6 @@ class MainActivity : AppCompatActivity() {
             updateAudioLabel()
             if (isStreaming) {
                 stopStream()
-                initCamera()
                 startStream()
             }
         }
@@ -209,15 +187,6 @@ class MainActivity : AppCompatActivity() {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             } else {
                 requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-            }
-        }
-
-        btnResCycle.setOnClickListener {
-            currentResolutionIdx = (currentResolutionIdx + 1) % resolutions.size
-            updateResLabel()
-            if (!isStreaming) {
-                try { rtmpCamera?.stopPreview() } catch (e: Exception) { }
-                initCamera()
             }
         }
 
@@ -242,17 +211,9 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
     }
 
-    private fun initCamera() {
-        startPreview()
-    }
-
     private fun toggleControls() {
         controlsHidden = !controlsHidden
         controls.visibility = if (controlsHidden) View.GONE else View.VISIBLE
-    }
-
-    private fun updatePathLabel() {
-        btnPathCycle.text = "Stream $currentPath"
     }
 
     private fun updateMirrorLabel() {
@@ -264,16 +225,13 @@ class MainActivity : AppCompatActivity() {
         btnRotate.text = if (cur == Configuration.ORIENTATION_LANDSCAPE) "Potrait" else "Landscape"
     }
 
-    private fun updateResLabel() {
-        btnResCycle.text = resolutions[currentResolutionIdx].label
-    }
-
     private fun updateAudioLabel() {
-        btnAudioOnly.text = if (isAudioOnly) "Audio: ON" else "Audio: OFF"
+        btnAudioOnly.text = if (isAudioOnly) "Audio Only" else "Video+Audio"
     }
 
     private fun getStreamEndpoint(): String {
-        return "${baseRtmpUrl}stream$currentPath"
+        return if (streamKey.isNotEmpty()) "${rtmpBase}$streamKey"
+        else "${rtmpBase}stream1"
     }
 
     private fun checkPermissions() {
@@ -282,7 +240,7 @@ class MainActivity : AppCompatActivity() {
         }
         if (needed.isEmpty()) {
             permissionsGranted = true
-            if (surfaceReady) initCamera()
+            if (surfaceReady) startPreview()
         } else {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), permReqCode)
         }
@@ -293,7 +251,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == permReqCode) {
             if (results.all { it == PackageManager.PERMISSION_GRANTED }) {
                 permissionsGranted = true
-                if (surfaceReady) initCamera()
+                if (surfaceReady) startPreview()
             } else {
                 Toast.makeText(this, "Izin kamera & audio diperlukan", Toast.LENGTH_LONG).show()
             }
@@ -328,7 +286,6 @@ class MainActivity : AppCompatActivity() {
         try {
             rtmpCamera?.let { cam ->
                 if (!cam.isOnPreview) {
-                    initCamera()
                     if (!startPreview()) return@let
                 }
                 try {
@@ -336,7 +293,7 @@ class MainActivity : AppCompatActivity() {
                     isStreaming = true
                     btnStream.text = "Hentikan"
                     btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
-                    tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
+                    tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     if (isAudioOnly) glView?.visibility = View.GONE
                     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } catch (e: IOException) {
@@ -381,7 +338,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         updateRotateLabel()
         if (permissionsGranted && surfaceReady && !isStreaming) {
-            initCamera()
+            startPreview()
         }
     }
 

@@ -3,13 +3,17 @@ package id.my.jangrana.rtmp
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
+import android.content.pm.ActivityInfo
 import android.os.Handler
 import android.os.Looper
 import android.view.SurfaceHolder
+import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -23,20 +27,33 @@ import java.io.IOException
 class MainActivity : AppCompatActivity() {
 
     private var glView: OpenGlView? = null
-    private lateinit var etUrl: EditText
-    private lateinit var etKey: EditText
     private lateinit var btnCamera: Button
+    private lateinit var btnPathCycle: Button
+    private lateinit var btnMirror: Button
     private lateinit var btnAudioOnly: Button
+    private lateinit var btnRotate: Button
     private lateinit var btnStream: Button
-    private lateinit var tvStatus: TextView
     private lateinit var btnLogout: Button
+    private lateinit var tvStatus: TextView
+    private lateinit var tvZoomLabel: TextView
+    private lateinit var zoomSeek: SeekBar
+    private lateinit var secretGate: View
+    private lateinit var etSecret: EditText
+    private lateinit var btnUnlock: Button
+    private lateinit var tvSecretError: TextView
+    private lateinit var controls: View
 
     private var rtmpCamera: RtmpCamera2? = null
     private var isStreaming = false
     private var isAudioOnly = false
     private var isFrontCamera = true
+    private var isMirror = true
     private var surfaceReady = false
     private var permissionsGranted = false
+    private var currentPath = 1
+
+    private val secretPassword = "mbg"
+    private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
     private val permissions = arrayOf(
         Manifest.permission.CAMERA,
@@ -49,25 +66,34 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         glView = findViewById(R.id.glView)
-        etUrl = findViewById(R.id.etUrl)
-        etKey = findViewById(R.id.etKey)
         btnCamera = findViewById(R.id.btnCamera)
+        btnPathCycle = findViewById(R.id.btnPathCycle)
+        btnMirror = findViewById(R.id.btnMirror)
         btnAudioOnly = findViewById(R.id.btnAudioOnly)
+        btnRotate = findViewById(R.id.btnRotate)
         btnStream = findViewById(R.id.btnStream)
-        tvStatus = findViewById(R.id.tvStatus)
         btnLogout = findViewById(R.id.btnLogout)
+        tvStatus = findViewById(R.id.tvStatus)
+        tvZoomLabel = findViewById(R.id.tvZoomLabel)
+        zoomSeek = findViewById(R.id.zoomSeek)
+        secretGate = findViewById(R.id.secretGate)
+        etSecret = findViewById(R.id.etSecret)
+        btnUnlock = findViewById(R.id.btnUnlock)
+        tvSecretError = findViewById(R.id.tvSecretError)
+        controls = findViewById(R.id.controls)
 
-        val rtmpUrl = intent.getStringExtra("rtmp_url") ?: ""
         val streamKey = intent.getStringExtra("stream_key") ?: ""
+        val rtmpUrl = intent.getStringExtra("rtmp_url") ?: ""
 
-        if (rtmpUrl.isNotEmpty() && streamKey.isNotEmpty()) {
-            val baseUrl = rtmpUrl.substringBeforeLast("/")
+        if (streamKey.isNotEmpty()) {
+            val num = streamKey.replace("stream", "").toIntOrNull() ?: 1
+            currentPath = num.coerceIn(1, 12)
+        } else if (rtmpUrl.isNotEmpty()) {
             val key = rtmpUrl.substringAfterLast("/")
-            etUrl.setText(baseUrl + "/")
-            etKey.setText(key)
-            etUrl.isEnabled = false
-            etKey.isEnabled = false
+            val num = key.replace("stream", "").toIntOrNull() ?: 1
+            currentPath = num.coerceIn(1, 12)
         }
+        updatePathLabel()
 
         try {
             glView?.setZOrderOnTop(true)
@@ -121,9 +147,75 @@ class MainActivity : AppCompatActivity() {
             override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
         })
 
+        btnUnlock.setOnClickListener {
+            val pass = etSecret.text.toString().trim()
+            if (pass == secretPassword) {
+                secretGate.visibility = View.GONE
+                controls.visibility = View.VISIBLE
+                checkPermissions()
+            } else {
+                tvSecretError.text = "Password salah"
+                etSecret.selectAll()
+            }
+        }
+
+        etSecret.setOnEditorActionListener { _, _, _ ->
+            btnUnlock.performClick()
+            true
+        }
+
+        updateRotateLabel()
+
+        secretGate.visibility = View.VISIBLE
+        controls.visibility = View.GONE
+
         btnStream.setOnClickListener { toggleStream() }
-        btnCamera.setOnClickListener { switchCamera() }
-        btnAudioOnly.setOnClickListener { toggleAudioOnly() }
+
+        btnCamera.setOnClickListener {
+            rtmpCamera?.let { cam ->
+                if (cam.isStreaming || cam.isOnPreview) {
+                    try { cam.switchCamera() } catch (e: Exception) { }
+                }
+            }
+            isFrontCamera = !isFrontCamera
+            isMirror = isFrontCamera
+            updateMirrorLabel()
+            btnCamera.text = if (isFrontCamera) "Kamera: Depan" else "Kamera: Belakang"
+        }
+
+        btnPathCycle.setOnClickListener {
+            currentPath = if (currentPath >= 12) 1 else currentPath + 1
+            updatePathLabel()
+        }
+
+        btnMirror.setOnClickListener {
+            isMirror = !isMirror
+            updateMirrorLabel()
+        }
+
+        btnAudioOnly.setOnClickListener {
+            isAudioOnly = !isAudioOnly
+            btnAudioOnly.text = if (isAudioOnly) "Audio: ON" else "Audio: OFF"
+
+            try {
+                rtmpCamera?.let { cam ->
+                    if (isStreaming) {
+                        if (isAudioOnly) {
+                            cam.stopPreview()
+                            glView?.visibility = View.GONE
+                            tvStatus.text = "Streaming Audio Only..."
+                        } else {
+                            glView?.visibility = View.VISIBLE
+                            if (surfaceReady) cam.startPreview()
+                            tvStatus.text = "Streaming LIVE..."
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                tvStatus.text = "Audio error: ${e.localizedMessage}"
+            }
+        }
+
         btnLogout.setOnClickListener {
             if (isStreaming) stopStream()
             val intent = Intent(this, LoginActivity::class.java)
@@ -132,7 +224,41 @@ class MainActivity : AppCompatActivity() {
             finish()
         }
 
-        checkPermissions()
+        btnRotate.setOnClickListener {
+            val cur = resources.configuration.orientation
+            if (cur == Configuration.ORIENTATION_LANDSCAPE) {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            } else {
+                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            }
+        }
+
+        zoomSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, progress: Int, fromUser: Boolean) {
+                val zoom = 1f + (progress / 100f) * 2f
+                tvZoomLabel.text = if (zoom <= 1.01f) "1x" else String.format("%.1fx", zoom)
+                try { rtmpCamera?.setZoom(zoom) } catch (e: Exception) { }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) {}
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+    }
+
+    private fun updatePathLabel() {
+        btnPathCycle.text = "Stream $currentPath"
+    }
+
+    private fun updateMirrorLabel() {
+        btnMirror.text = if (isMirror) "Flip: ON" else "Flip: OFF"
+    }
+
+    private fun updateRotateLabel() {
+        val cur = resources.configuration.orientation
+        btnRotate.text = if (cur == Configuration.ORIENTATION_LANDSCAPE) "Potrait" else "Landscape"
+    }
+
+    private fun getStreamEndpoint(): String {
+        return "${baseRtmpUrl}stream$currentPath"
     }
 
     private fun checkPermissions() {
@@ -178,21 +304,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toggleStream() {
-        if (isStreaming) {
-            stopStream()
-        } else {
-            startStream()
-        }
+        if (isStreaming) stopStream() else startStream()
     }
 
     private fun startStream() {
-        val url = etUrl.text.toString().trim()
-        val key = etKey.text.toString().trim()
-        if (url.isEmpty() || key.isEmpty()) {
-            tvStatus.text = "Isi server URL dan stream key"
-            return
-        }
-        val endpoint = if (url.endsWith("/")) url + key else "$url/$key"
+        val endpoint = getStreamEndpoint()
 
         try {
             rtmpCamera?.let { cam ->
@@ -215,9 +331,9 @@ class MainActivity : AppCompatActivity() {
             cam.startStream(endpoint)
             isStreaming = true
             btnStream.text = "Hentikan"
-            btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+            btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
             tvStatus.text = if (isAudioOnly) "Streaming Audio Only..." else "Streaming LIVE..."
-            if (isAudioOnly) glView?.visibility = android.view.View.GONE
+            if (isAudioOnly) glView?.visibility = View.GONE
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } catch (e: IOException) {
             tvStatus.text = "Gagal: ${e.localizedMessage}"
@@ -232,47 +348,11 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) { }
         isStreaming = false
-        glView?.visibility = android.view.View.VISIBLE
+        glView?.visibility = View.VISIBLE
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
-        btnStream.setBackgroundColor(ContextCompat.getColor(this, android.R.color.holo_blue_dark))
+        btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_blue_dark))
         tvStatus.text = "Siap"
-    }
-
-    private fun switchCamera() {
-        try {
-            rtmpCamera?.let { cam ->
-                if (cam.isStreaming || cam.isOnPreview) {
-                    cam.switchCamera()
-                    isFrontCamera = !isFrontCamera
-                }
-            }
-        } catch (e: Exception) {
-            tvStatus.text = "Gagal balik kamera: ${e.localizedMessage}"
-        }
-    }
-
-    private fun toggleAudioOnly() {
-        isAudioOnly = !isAudioOnly
-        btnAudioOnly.text = if (isAudioOnly) "Audio Only: ON" else "Audio Only: OFF"
-
-        try {
-            rtmpCamera?.let { cam ->
-                if (isStreaming) {
-                    if (isAudioOnly) {
-                        cam.stopPreview()
-                        glView?.visibility = android.view.View.GONE
-                        tvStatus.text = "Streaming Audio Only..."
-                    } else {
-                        glView?.visibility = android.view.View.VISIBLE
-                        cam.startPreview()
-                        tvStatus.text = "Streaming..."
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            tvStatus.text = "Audio error: ${e.localizedMessage}"
-        }
     }
 
     override fun onDestroy() {
@@ -291,6 +371,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        updateRotateLabel()
         if (permissionsGranted && surfaceReady) startPreview()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updateRotateLabel()
     }
 }

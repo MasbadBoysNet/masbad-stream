@@ -34,7 +34,6 @@
         <activity
             android:name="id.my.jangrana.rtmp.MainActivity"
             android:exported="false"
-            android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:keepScreenOn="true" />
     </application>

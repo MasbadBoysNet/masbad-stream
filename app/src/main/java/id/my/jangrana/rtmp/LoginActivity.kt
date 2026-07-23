@@ -93,7 +93,7 @@ class LoginActivity : AppCompatActivity() {
                         }
                     } else {
                         val obj = try { JSONObject(bodyStr) } catch (e: Exception) { null }
-                        tvError.text = obj?.optString("error", "Server error (${response.code()})")
+                        tvError.text = obj?.optString("error", "Server error (${response.code})")
                     }
                 }
             } catch (e: Exception) {

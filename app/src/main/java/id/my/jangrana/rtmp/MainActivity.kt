@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -51,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private var currentPath = 1
     private var controlsHidden = false
     private var lastStopStatus = "Siap"
+    private var streamWakeLock: PowerManager.WakeLock? = null
 
     private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
@@ -317,6 +319,7 @@ class MainActivity : AppCompatActivity() {
                     btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
                     tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     if (isAudioOnly) glView?.visibility = View.GONE
+                    acquireStreamWakeLock()
                     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 } catch (e: IOException) {
                     tvStatus.text = "Gagal: ${e.localizedMessage}"
@@ -336,6 +339,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) { }
         isStreaming = false
         glView?.visibility = View.VISIBLE
+        releaseStreamWakeLock()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
         btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_blue_dark))
@@ -344,11 +348,13 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         if (isStreaming) stopStream()
+        releaseStreamWakeLock()
         super.onDestroy()
     }
 
     override fun onPause() {
         super.onPause()
+        if (isStreaming) return
         try {
             rtmpCamera?.let { cam ->
                 if (cam.isOnPreview) cam.stopPreview()
@@ -367,5 +373,24 @@ class MainActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         updateRotateLabel()
+    }
+
+    private fun acquireStreamWakeLock() {
+        if (streamWakeLock?.isHeld == true) return
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        streamWakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "MasbadStream:AudioStreamLock"
+        ).apply {
+            setReferenceCounted(false)
+            acquire()
+        }
+    }
+
+    private fun releaseStreamWakeLock() {
+        try {
+            if (streamWakeLock?.isHeld == true) streamWakeLock?.release()
+        } catch (e: Exception) { }
+        streamWakeLock = null
     }
 }

@@ -99,12 +99,9 @@ class MainActivity : AppCompatActivity() {
                         tvStatus.text = if (isAudioOnly) "Audio Only" else "Streaming LIVE..."
                     }
 
-                    override fun onConnectionFailed(reason: String): Boolean {
-                        runOnUiThread {
+                    override fun onConnectionFailed(reason: String) = runOnUiThread {
                             tvStatus.text = "Koneksi gagal: $reason"
                             stopStream()
-                        }
-                        return false
                     }
 
                     override fun onDisconnect() = runOnUiThread {

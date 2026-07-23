@@ -22,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.pedro.common.ConnectChecker
+import com.pedro.encoder.input.video.CameraHelper
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
 import java.io.IOException
@@ -252,7 +253,9 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isAudioOnly) {
                     val res = getResolution()
-                    if (!cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, res.iframeInterval, 0)) {
+                    val rotation = CameraHelper.getCameraOrientation(this)
+                    val (vw, vh) = if (rotation == 90 || rotation == 270) res.height to res.width else res.width to res.height
+                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, rotation)) {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }

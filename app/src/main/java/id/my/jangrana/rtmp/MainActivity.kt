@@ -256,10 +256,14 @@ class MainActivity : AppCompatActivity() {
 
                 if (!isAudioOnly) {
                     val res = resolutions[currentResIdx]
-                    val isPortrait = windowManager.defaultDisplay.rotation == Surface.ROTATION_0 ||
-                            windowManager.defaultDisplay.rotation == Surface.ROTATION_180
-                    val (vw, vh) = if (isPortrait) res.height to res.width else res.width to res.height
-                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, 0)) {
+                    val rotation = when (windowManager.defaultDisplay.rotation) {
+                        Surface.ROTATION_0 -> 90
+                        Surface.ROTATION_90 -> 0
+                        Surface.ROTATION_180 -> 270
+                        Surface.ROTATION_270 -> 180
+                        else -> 0
+                    }
+                    if (!cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, res.iframeInterval, rotation)) {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }

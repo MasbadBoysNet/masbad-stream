@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
     private var permissionsGranted = false
     private var currentPath = 1
     private var controlsHidden = false
+    private var lastStopStatus = "Siap"
 
     private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
@@ -100,18 +101,15 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     override fun onConnectionFailed(reason: String) = runOnUiThread {
-                            tvStatus.text = "Koneksi gagal: $reason"
-                            stopStream()
+                        stopStream("Gagal: $reason")
                     }
 
                     override fun onDisconnect() = runOnUiThread {
-                        tvStatus.text = "Terputus"
-                        stopStream()
+                        stopStream("Terputus")
                     }
 
                     override fun onAuthError() = runOnUiThread {
-                        tvStatus.text = "Auth RTMP gagal"
-                        stopStream()
+                        stopStream("Auth RTMP gagal")
                     }
 
                     override fun onAuthSuccess() = runOnUiThread {
@@ -233,9 +231,9 @@ class MainActivity : AppCompatActivity() {
                 if (!isAudioOnly) {
                     val res = getResolution()
                     val rotation = if (resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT) 90 else 0
-                    cam.prepareVideo(res.width, res.height, 30, res.bitrate, rotation)
+                    cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, rotation)
                 }
-                cam.prepareAudio(64 * 1000, 44100, false, false, false)
+                cam.prepareAudio(32 * 1000, 44100, false, false, false)
 
                 if (!isAudioOnly) {
                     cam.startPreview()
@@ -247,10 +245,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun getResolution(): ResConfig {
-        return ResConfig(1280, 720, 1500 * 1000)
+        return ResConfig(640, 360, 15, 500 * 1000)
     }
 
-    data class ResConfig(val width: Int, val height: Int, val bitrate: Int)
+    data class ResConfig(val width: Int, val height: Int, val fps: Int, val bitrate: Int)
 
     private fun toggleControls() {
         controlsHidden = !controlsHidden
@@ -313,6 +311,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 try {
                     cam.startStream(endpoint)
+                    lastStopStatus = "Siap"
                     isStreaming = true
                     btnStream.text = "Hentikan"
                     btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_red_dark))
@@ -328,10 +327,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun stopStream() {
+    private fun stopStream(status: String = lastStopStatus) {
+        lastStopStatus = status
         try {
             rtmpCamera?.let { cam ->
-                cam.stopStream()
+                if (cam.isStreaming) cam.stopStream()
             }
         } catch (e: Exception) { }
         isStreaming = false
@@ -339,7 +339,7 @@ class MainActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btnStream.text = "Mulai Stream"
         btnStream.setBackgroundTintList(ContextCompat.getColorStateList(this, android.R.color.holo_blue_dark))
-        tvStatus.text = "Siap"
+        tvStatus.text = status
     }
 
     override fun onDestroy() {

@@ -7,7 +7,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.graphics.Point
+import android.widget.FrameLayout
 import android.view.GestureDetector
+import android.view.Gravity
 import android.view.Surface
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -243,7 +246,35 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(sb: SeekBar) {}
         })
 
+        updatePreviewAspectRatio()
         checkPermissions()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        updatePreviewAspectRatio()
+    }
+
+    private fun updatePreviewAspectRatio() {
+        glView?.post {
+            try {
+                val display = windowManager.defaultDisplay
+                val point = Point()
+                display.getRealSize(point)
+                val isPortrait = display.rotation == Surface.ROTATION_0 ||
+                        display.rotation == Surface.ROTATION_180
+                val lp = glView?.layoutParams as? FrameLayout.LayoutParams ?: return@post
+                lp.gravity = Gravity.CENTER
+                if (isPortrait) {
+                    lp.width = FrameLayout.LayoutParams.MATCH_PARENT
+                    lp.height = point.x * 16 / 9
+                } else {
+                    lp.height = FrameLayout.LayoutParams.MATCH_PARENT
+                    lp.width = point.y * 16 / 9
+                }
+                glView?.layoutParams = lp
+            } catch (e: Exception) { }
+        }
     }
 
     private fun initCamera(forcePrepare: Boolean = false) {
@@ -259,7 +290,7 @@ class MainActivity : AppCompatActivity() {
                     val isPortrait = windowManager.defaultDisplay.rotation == Surface.ROTATION_0 ||
                             windowManager.defaultDisplay.rotation == Surface.ROTATION_180
                     val (vw, vh) = if (isPortrait) res.height to res.width else res.width to res.height
-                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, if (isPortrait) 90 else 0)) {
+                    if (!cam.prepareVideo(vw, vh, res.fps, res.bitrate, res.iframeInterval, 0)) {
                         tvStatus.text = "Gagal init video encoder"
                         return@let
                     }

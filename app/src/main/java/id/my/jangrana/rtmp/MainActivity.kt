@@ -24,7 +24,6 @@ import androidx.core.content.ContextCompat
 import com.pedro.common.ConnectChecker
 import com.pedro.library.rtmp.RtmpCamera2
 import com.pedro.library.view.OpenGlView
-import android.media.MediaCodecInfo
 import java.io.IOException
 
 class MainActivity : AppCompatActivity() {

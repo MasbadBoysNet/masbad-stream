@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private var reconnectAttempts = 0
     private val maxReconnectAttempts = 5
     private val reconnectHandler = Handler(Looper.getMainLooper())
+    private var encodersPrepared = false
 
     private val baseRtmpUrl = "rtmp://stream.jangrana.my.id:1935/"
 
@@ -186,6 +187,7 @@ class MainActivity : AppCompatActivity() {
             isAudioOnly = !isAudioOnly
             updateAudioLabel()
 
+            encodersPrepared = false
             if (isAudioOnly) {
                 glView?.visibility = View.GONE
                 rtmpCamera?.let { if (it.isOnPreview) it.stopPreview() }
@@ -230,10 +232,13 @@ class MainActivity : AppCompatActivity() {
         checkPermissions()
     }
 
-    private fun initCamera() {
+    private fun initCamera(forcePrepare: Boolean = false) {
         try {
             rtmpCamera?.let { cam ->
-                if (cam.isOnPreview) return@let
+                if (forcePrepare && cam.isOnPreview) {
+                    try { cam.stopPreview() } catch (e: Exception) { }
+                }
+                if (!forcePrepare && cam.isOnPreview && encodersPrepared) return@let
 
                 if (!isAudioOnly) {
                     val res = getResolution()
@@ -241,12 +246,14 @@ class MainActivity : AppCompatActivity() {
                     cam.prepareVideo(res.width, res.height, res.fps, res.bitrate, rotation)
                 }
                 cam.prepareAudio(32 * 1000, 44100, false, false, false)
+                encodersPrepared = true
 
                 if (!isAudioOnly) {
                     cam.startPreview()
                 }
             }
         } catch (e: Exception) {
+            encodersPrepared = false
             tvStatus.text = "Init: ${e.localizedMessage}"
         }
     }
@@ -312,6 +319,10 @@ class MainActivity : AppCompatActivity() {
 
         try {
             rtmpCamera?.let { cam ->
+                if (!encodersPrepared) {
+                    initCamera(forcePrepare = true)
+                    if (!encodersPrepared) return@let
+                }
                 if (!isAudioOnly && !cam.isOnPreview) {
                     initCamera()
                     if (!cam.isOnPreview) return@let
@@ -346,6 +357,7 @@ class MainActivity : AppCompatActivity() {
                 if (cam.isStreaming) cam.stopStream()
             }
         } catch (e: Exception) { }
+        encodersPrepared = false
         isStreaming = false
         glView?.visibility = View.VISIBLE
         releaseStreamWakeLock()
@@ -365,6 +377,7 @@ class MainActivity : AppCompatActivity() {
                 if (cam.isStreaming) cam.stopStream()
             }
         } catch (e: Exception) { }
+        encodersPrepared = false
         isStreaming = false
 
         if (reconnectAttempts >= maxReconnectAttempts) {

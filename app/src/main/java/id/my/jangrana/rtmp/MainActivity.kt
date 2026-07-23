@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.view.SurfaceHolder
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
@@ -32,6 +33,7 @@ class MainActivity : AppCompatActivity() {
     private var isStreaming = false
     private var isAudioOnly = false
     private var isFrontCamera = true
+    private var surfaceReady = false
 
     private val permissions = arrayOf(
         Manifest.permission.CAMERA,
@@ -107,6 +109,14 @@ class MainActivity : AppCompatActivity() {
             tvStatus.text = "Gagal init kamera: ${e.localizedMessage}"
         }
 
+        glView?.holder?.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: SurfaceHolder) {
+                surfaceReady = true
+            }
+            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+            override fun surfaceDestroyed(holder: SurfaceHolder) { surfaceReady = false }
+        })
+
         btnStream.setOnClickListener { toggleStream() }
         btnCamera.setOnClickListener { switchCamera() }
         btnAudioOnly.setOnClickListener { toggleAudioOnly() }
@@ -127,31 +137,33 @@ class MainActivity : AppCompatActivity() {
         }
         if (needed.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, needed.toTypedArray(), permReqCode)
-        } else {
-            startPreview()
         }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, perms: Array<out String>, results: IntArray) {
         super.onRequestPermissionsResult(requestCode, perms, results)
         if (requestCode == permReqCode) {
-            if (results.all { it == PackageManager.PERMISSION_GRANTED }) {
-                startPreview()
-            } else {
+            if (!results.all { it == PackageManager.PERMISSION_GRANTED }) {
                 Toast.makeText(this, "Izin kamera & audio diperlukan", Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun startPreview() {
-        try {
+    private fun startPreview(): Boolean {
+        if (!surfaceReady) {
+            tvStatus.text = "Tunggu permukaan kamera..."
+            return false
+        }
+        return try {
             rtmpCamera?.let { cam ->
                 if (!cam.isOnPreview) {
                     cam.startPreview()
                 }
             }
+            true
         } catch (e: Exception) {
-            runOnUiThread { tvStatus.text = "Kamera error: ${e.localizedMessage}" }
+            tvStatus.text = "Kamera error: ${e.localizedMessage}"
+            false
         }
     }
 
@@ -175,7 +187,7 @@ class MainActivity : AppCompatActivity() {
         try {
             rtmpCamera?.let { cam ->
                 if (!cam.isOnPreview) {
-                    cam.startPreview()
+                    if (!startPreview()) return@let
                 }
                 try {
                     cam.startStream(endpoint)
@@ -261,14 +273,5 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        try {
-            rtmpCamera?.let { cam ->
-                if (!cam.isOnPreview && !isStreaming) {
-                    cam.startPreview()
-                }
-            }
-        } catch (e: Exception) {
-            tvStatus.text = "Preview resume: ${e.localizedMessage}"
-        }
     }
 }
